@@ -24,6 +24,7 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/moduleparam.h>
+#include <linux/version.h>
 
 #include <asm/pgtable.h>
 
@@ -38,6 +39,18 @@
 #include "teesmc_st.h"
 
 #define DEV	(tee_tz_miscdev.this_device)
+
+/*
+ * Temporary define to support both old naming, ioremap_cached and the newly
+ * introduced name ioremap_cache. Note that there will be a gap during 3.13.0
+ * where the name changed where this fix will not work. However for 3.12.0 and
+ * 3.13.0 where function name is ioremap_cache this will work.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
+#define IOREMAP_CACHE ioremap_cache
+#else
+#define IOREMAP_CACHE ioremap_cached
+#endif
 
 /* Shared Memory data (config loaded from secure world) */
 static unsigned long shm_paddr;
@@ -554,7 +567,7 @@ static int register_l2cc_mutex(bool reg)
 	}
 	paddr = param.a2;
 
-	vaddr = ioremap_cached(paddr, sizeof(u32));
+	vaddr = IOREMAP_CACHE(paddr, sizeof(u32));
 	if (vaddr == NULL) {
 		dev_warn(DEV, "TZ l2cc mutex disabled: ioremap failed\n");
 		ret = -ENOMEM;
@@ -620,7 +633,7 @@ static int configure_shm(void)
 	shm_cached = (bool)param.a3;
 
 	if (shm_cached)
-		shm_vaddr = ioremap_cached(shm_paddr, shm_size);
+		shm_vaddr = IOREMAP_CACHE(shm_paddr, shm_size);
 	else
 		shm_vaddr = ioremap_nocache(shm_paddr, shm_size);
 
