@@ -21,16 +21,6 @@
 #include "tee_core_priv.h"
 #include "tee_shm.h"
 
-#define INMSG() dev_dbg(_DEV(tee), "%s: >\n", __func__)
-#define OUTMSG(val) dev_dbg(_DEV(tee), "%s: < %ld\n", __func__, (long)val)
-#define OUTMSGX(val) dev_dbg(_DEV(tee), "%s: < %08x\n",\
-		__func__, (unsigned int)(long)val)
-
-/* TODO
-#if (sizeof(TEEC_SharedMemory) != sizeof(tee_shm))
-#error "sizeof(TEEC_SharedMemory) != sizeof(tee_shm))"
-#endif
-*/
 struct tee_shm_attach {
 	struct sg_table sgt;
 	enum dma_data_direction dir;
@@ -41,11 +31,9 @@ struct tee_shm *tee_shm_alloc_from_rpc(struct tee *tee, size_t size)
 {
 	struct tee_shm *shm;
 
-	INMSG();
-
 	shm = tee_shm_alloc(tee, size, TEE_SHM_TEMP | TEE_SHM_FROM_RPC);
 	if (IS_ERR_OR_NULL(shm)) {
-		dev_err(_DEV(tee), "%s: buffer allocation failed (%ld)\n",
+		tee_err(tee, "%s: allocation failed (%ld)\n",
 			__func__, PTR_ERR(shm));
 		goto out;
 	}
@@ -57,9 +45,9 @@ struct tee_shm *tee_shm_alloc_from_rpc(struct tee *tee, size_t size)
 	shm->ctx = NULL;
 
 out:
-	OUTMSGX(shm);
 	return shm;
 }
+EXPORT_SYMBOL(tee_shm_alloc_from_rpc);
 
 void tee_shm_free_from_rpc(struct tee_shm *shm)
 {
@@ -75,6 +63,8 @@ void tee_shm_free_from_rpc(struct tee_shm *shm)
 
 	tee_shm_free(shm);
 }
+EXPORT_SYMBOL(tee_shm_free_from_rpc);
+
 
 struct tee_shm *tee_shm_alloc(struct tee *tee, size_t size, uint32_t flags)
 {
@@ -84,26 +74,23 @@ struct tee_shm *tee_shm_alloc(struct tee *tee, size_t size, uint32_t flags)
 	struct page *page;
 	int ret;
 
-	INMSG();
-
 	shm = tee->ops->alloc(tee, size, flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		dev_err(_DEV(tee),
-			"%s: allocation failed (s=%d,flags=0x%08x) err=%ld\n",
+		tee_err(tee, "%s: allocation failed (s=%d,flags=0x%08x) err=%ld\n",
 			__func__, (int)size, flags, PTR_ERR(shm));
 		goto exit;
 	}
 
 	shm->tee = tee;
 
-	dev_dbg(_DEV(tee), "%s: shm=%p, paddr=%p,s=%d/%d app=\"%s\" pid=%d\n",
+	tee_dbg(tee, "%s: shm=%p, paddr=%p,s=%d/%d app=\"%s\" pid=%d\n",
 		 __func__, shm, (void *)shm->paddr, (int)shm->size_req,
 		 (int)shm->size_alloc, current->comm, current->pid);
 
 	pfn = shm->paddr >> PAGE_SHIFT;
 	page = pfn_to_page(pfn);
 	if (IS_ERR_OR_NULL(page)) {
-		dev_err(_DEV(tee), "%s: pfn_to_page(%lx) failed\n",
+		tee_err(tee, "%s: pfn_to_page(%lx) failed\n",
 				__func__, pfn);
 		tee->ops->free(shm);
 		return (struct tee_shm *)page;
@@ -115,13 +102,12 @@ struct tee_shm *tee_shm_alloc(struct tee *tee, size_t size, uint32_t flags)
 	ret = sg_alloc_table_from_pages(&shm->sgt, &page,
 			nr_pages, 0, nr_pages * PAGE_SIZE, GFP_KERNEL);
 	if (IS_ERR_VALUE(ret)) {
-		dev_err(_DEV(tee), "%s: sg_alloc_table_from_pages() failed\n",
+		tee_err(tee, "%s: sg_alloc_table_from_pages() failed\n",
 				__func__);
 		tee->ops->free(shm);
 		shm = ERR_PTR(ret);
 	}
 exit:
-	OUTMSGX(shm);
 	return shm;
 }
 
@@ -131,11 +117,12 @@ void tee_shm_free(struct tee_shm *shm)
 
 	if (IS_ERR_OR_NULL(shm))
 		return;
+
 	tee = shm->tee;
 	if (tee == NULL)
 		pr_warn("invalid call to tee_shm_free(%p): NULL tee\n", shm);
 	else if (shm->tee == NULL)
-		dev_warn(_DEV(tee), "tee_shm_free(%p): NULL tee\n", shm);
+		tee_warn(tee, "tee_shm_free(%p): NULL tee\n", shm);
 	else {
 		sg_free_table(&shm->sgt);
 		shm->tee->ops->free(shm);
@@ -153,19 +140,14 @@ static int _tee_shm_attach_dma_buf(struct dma_buf *dmabuf,
 	shm = dmabuf->priv;
 	tee = shm->tee;
 
-	INMSG();
-
-	tee_shm_attach = devm_kzalloc(_DEV(tee),
+	tee_shm_attach = devm_kzalloc(tee->dev,
 			sizeof(*tee_shm_attach), GFP_KERNEL);
-	if (!tee_shm_attach) {
-		OUTMSG(-ENOMEM);
+	if (!tee_shm_attach)
 		return -ENOMEM;
-	}
 
 	tee_shm_attach->dir = DMA_NONE;
 	attach->priv = tee_shm_attach;
 
-	OUTMSG(0);
 	return 0;
 }
 
@@ -180,12 +162,8 @@ static void _tee_shm_detach_dma_buf(struct dma_buf *dmabuf,
 	shm = dmabuf->priv;
 	tee = shm->tee;
 
-	INMSG();
-
-	if (!tee_shm_attach) {
-		OUTMSG(0);
+	if (!tee_shm_attach)
 		return;
-	}
 
 	sgt = &tee_shm_attach->sgt;
 
@@ -194,9 +172,8 @@ static void _tee_shm_detach_dma_buf(struct dma_buf *dmabuf,
 			tee_shm_attach->dir);
 
 	sg_free_table(sgt);
-	devm_kfree(_DEV(tee), tee_shm_attach);
+	devm_kfree(tee->dev, tee_shm_attach);
 	attach->priv = NULL;
-	OUTMSG(0);
 }
 
 static struct sg_table *_tee_shm_dma_buf_map_dma_buf(
@@ -212,11 +189,8 @@ static struct sg_table *_tee_shm_dma_buf_map_dma_buf(
 
 	tee = tee_shm->tee;
 
-	INMSG();
-
 	/* just return current sgt if already requested. */
 	if (tee_shm_attach->dir == dir && tee_shm_attach->is_mapped) {
-		OUTMSGX(&tee_shm_attach->sgt);
 		return &tee_shm_attach->sgt;
 	}
 
@@ -224,7 +198,7 @@ static struct sg_table *_tee_shm_dma_buf_map_dma_buf(
 
 	ret = sg_alloc_table(sgt, tee_shm->sgt.orig_nents, GFP_KERNEL);
 	if (ret) {
-		dev_err(_DEV(tee), "failed to alloc sgt.\n");
+		tee_err(tee, "failed to alloc sgt.\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -239,7 +213,7 @@ static struct sg_table *_tee_shm_dma_buf_map_dma_buf(
 	if (dir != DMA_NONE) {
 		nents = dma_map_sg(attach->dev, sgt->sgl, sgt->orig_nents, dir);
 		if (!nents) {
-			dev_err(_DEV(tee), "failed to map sgl with iommu.\n");
+			tee_err(tee, "failed to map sgl with iommu.\n");
 			sg_free_table(sgt);
 			sgt = ERR_PTR(-EIO);
 			goto err_unlock;
@@ -251,7 +225,6 @@ static struct sg_table *_tee_shm_dma_buf_map_dma_buf(
 	attach->priv = tee_shm_attach;
 
 err_unlock:
-	OUTMSGX(sgt);
 	return sgt;
 }
 
@@ -269,17 +242,12 @@ static void _tee_shm_dma_buf_release(struct dma_buf *dmabuf)
 	struct tee *tee;
 
 	tee = shm->ctx->tee;
-
-	INMSG();
-
 	ctx = shm->ctx;
-	dev_dbg(_DEV(ctx->tee), "%s: shm=%p, paddr=%p,s=%d/%d app=\"%s\" pid=%d\n",
+	tee_dbg(ctx->tee, "%s: shm=%p, paddr=%p,s=%d/%d app=\"%s\" pid=%d\n",
 		 __func__, shm, (void *)shm->paddr, (int)shm->size_req,
 		 (int)shm->size_alloc, current->comm, current->pid);
 
 	tee_shm_free_io(shm);
-
-	OUTMSG(0);
 }
 
 static int _tee_shm_dma_buf_mmap(struct dma_buf *dmabuf,
@@ -296,8 +264,6 @@ static int _tee_shm_dma_buf_mmap(struct dma_buf *dmabuf,
 
 	pfn = shm->paddr >> PAGE_SHIFT;
 
-	INMSG();
-
 	if (shm->flags & TEE_SHM_CACHED)
 		prot = vma->vm_page_prot;
 	else
@@ -308,11 +274,10 @@ static int _tee_shm_dma_buf_mmap(struct dma_buf *dmabuf,
 	if (!ret)
 		vma->vm_private_data = (void *)shm;
 
-	dev_dbg(_DEV(shm->ctx->tee), "%s: map the shm (p@=%p,s=%dKiB) => %x\n",
+	tee_dbg(shm->ctx->tee, "%s: map the shm (p@=%p,s=%dKiB) => %x\n",
 		__func__, (void *)shm->paddr, (int)size / 1024,
 		(unsigned int)vma->vm_start);
 
-	OUTMSG(ret);
 	return ret;
 }
 
@@ -326,7 +291,7 @@ static void *_tee_shm_dma_buf_kmap(struct dma_buf *db, unsigned long pgnum)
 {
 	struct tee_shm *shm = db->priv;
 
-	dev_dbg(_DEV(shm->ctx->tee), "%s: kmap the shm (p@=%p, v@=%p, s=%zdKiB)\n",
+	tee_dbg(shm->ctx->tee, "%s: kmap the shm (p@=%p, v@=%p, s=%zdKiB)\n",
 		__func__, (void *)shm->paddr, (void *)shm->kaddr,
 		shm->size_alloc / 1024);
 	/*
@@ -354,8 +319,6 @@ struct dma_buf_ops _tee_shm_dma_buf_ops = {
 	.mmap = _tee_shm_dma_buf_mmap,
 };
 
-/******************************************************************************/
-
 static int export_buf(struct tee *tee, struct tee_shm *shm, int *export)
 {
 	struct dma_buf *dmabuf;
@@ -364,7 +327,7 @@ static int export_buf(struct tee *tee, struct tee_shm *shm, int *export)
 	dmabuf = dma_buf_export(shm, &_tee_shm_dma_buf_ops, shm->size_alloc,
 				O_RDWR, 0);
 	if (IS_ERR_OR_NULL(dmabuf)) {
-		dev_err(_DEV(tee), "%s: dmabuf: couldn't export buffer (%ld)\n",
+		tee_err(tee, "%s: dmabuf: couldn't export buffer (%ld)\n",
 			__func__, PTR_ERR(dmabuf));
 		ret = -EINVAL;
 		goto out;
@@ -372,7 +335,6 @@ static int export_buf(struct tee *tee, struct tee_shm *shm, int *export)
 
 	*export = dma_buf_fd(dmabuf, O_CLOEXEC);
 out:
-	OUTMSG(ret);
 	return ret;
 }
 
@@ -382,8 +344,6 @@ int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io)
 	struct tee *tee = ctx->tee;
 	int ret;
 
-	INMSG();
-
 	if (ctx->usr_client)
 		shm_io->fd_shm = 0;
 	else
@@ -391,7 +351,7 @@ int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io)
 
 	shm = tee_shm_alloc(tee, shm_io->size, shm_io->flags);
 	if (IS_ERR_OR_NULL(shm)) {
-		dev_err(_DEV(tee), "%s: buffer allocation failed (%ld)\n",
+		tee_err(tee, "%s: buffer allocation failed (%ld)\n",
 			__func__, PTR_ERR(shm));
 		return PTR_ERR(shm);
 	}
@@ -409,7 +369,7 @@ int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io)
 		shm_io->ptr = shm;
 
 	shm->ctx = ctx;
-	shm->dev = get_device(_DEV(tee));
+	shm->dev = get_device(tee->dev);
 	ret = tee_get(tee);
 	BUG_ON(ret);		/* tee_core_get must not issue */
 	tee_context_get(ctx);
@@ -419,7 +379,6 @@ int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io)
 	list_add_tail(&shm->entry, &ctx->list_shm);
 	mutex_unlock(&tee->lock);
 out:
-	OUTMSG(ret);
 	return ret;
 }
 
@@ -450,8 +409,6 @@ int tee_shm_fd_for_rpc(struct tee_context *ctx, struct tee_shm_io *shm_io)
 	int ret;
 	struct list_head *pshm;
 
-	INMSG();
-
 	shm_io->fd_shm = 0;
 
 	if (!list_empty(&tee->list_rpc_shm)) {
@@ -462,34 +419,28 @@ int tee_shm_fd_for_rpc(struct tee_context *ctx, struct tee_shm_io *shm_io)
 		}
 	}
 
-	dev_err(_DEV(tee), "Can't find shm for %p\n", (void *)shm_io->buffer);
-	ret = -ENOMEM;
-	goto out;
+	tee_err(tee, "Can't find shm for %p\n", (void *)shm_io->buffer);
+	return -ENOMEM;
 
 found:
 	ret = export_buf(tee, shm, &shm_io->fd_shm);
-	if (ret) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (ret)
+		return -ENOMEM;
 
 	shm->ctx = ctx;
 	mutex_lock(&tee->lock);
 	list_move(&shm->entry, &ctx->list_shm);
 	mutex_unlock(&tee->lock);
 
-	shm->dev = get_device(_DEV(tee));
+	shm->dev = get_device(tee->dev);
 	ret = tee_get(tee);
 	BUG_ON(ret);
+
 	tee_context_get(ctx);
 
 	BUG_ON(!tee->ops->shm_inc_ref(shm));
-out:
-	OUTMSG(ret);
 	return ret;
 }
-
-/******************************************************************************/
 
 static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 		unsigned int flags, size_t size, int offset)
@@ -498,7 +449,7 @@ static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 	struct dma_buf *dma_buf;
 	int ret = 0;
 
-	dev_dbg(_DEV(tee), "%s: > fd=%d flags=%08x\n", __func__, fd, flags);
+	tee_dbg(tee, "%s: > fd=%d flags=%08x\n", __func__, fd, flags);
 
 	dma_buf = dma_buf_get(fd);
 	if (IS_ERR(dma_buf)) {
@@ -508,20 +459,20 @@ static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 
 	sdb = kzalloc(sizeof(*sdb), GFP_KERNEL);
 	if (IS_ERR_OR_NULL(sdb)) {
-		dev_err(_DEV(tee), "can't alloc tee_shm_dma_buf\n");
+		tee_err(tee, "can't alloc tee_shm_dma_buf\n");
 		ret = PTR_ERR(sdb);
 		goto buf_put;
 	}
 	shm->sdb = sdb;
 
 	if (dma_buf->size < size + offset) {
-		dev_err(_DEV(tee), "dma_buf too small %zd < %zd + %d\n",
+		tee_err(tee, "dma_buf too small %zd < %zd + %d\n",
 			dma_buf->size, size, offset);
 		ret = -EINVAL;
 		goto free_sdb;
 	}
 
-	sdb->attach = dma_buf_attach(dma_buf, _DEV(tee));
+	sdb->attach = dma_buf_attach(dma_buf, tee->dev);
 	if (IS_ERR_OR_NULL(sdb->attach)) {
 		ret = PTR_ERR(sdb->attach);
 		goto free_sdb;
@@ -546,7 +497,7 @@ static int tee_shm_db_get(struct tee *tee, struct tee_shm *shm, int fd,
 
 	shm->flags |= TEEC_MEM_DMABUF;
 
-	dev_dbg(_DEV(tee), "fd=%d @p=%p is_tee=%d db=%p\n", fd,
+	tee_dbg(tee, "fd=%d @p=%p is_tee=%d db=%p\n", fd,
 			(void *)shm->paddr, sdb->tee_allocated, dma_buf);
 	goto exit;
 
@@ -559,7 +510,6 @@ free_sdb:
 buf_put:
 	dma_buf_put(dma_buf);
 exit:
-	OUTMSG(ret);
 	return ret;
 }
 
@@ -622,8 +572,7 @@ static int tee_shm_va_get(struct tee_context *ctx, struct tee_shm *shm,
 	struct vm_area_struct *vma;
 	struct tee *tee = ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > %p\n", __func__, buffer);
-	/* if the caller is the kernel api, active_mm is mm */
+	/* if the caller is the kernel API, active_mm is mm */
 	if (!mm)
 		mm = current->active_mm;
 
@@ -636,7 +585,7 @@ static int tee_shm_va_get(struct tee_context *ctx, struct tee_shm *shm,
 		/* It's a VMA => consider it a a user address */
 
 		if (follow_pfn(vma, virt_base, &pfn)) {
-			dev_err(_DEV(tee), "%s can't get pfn for %p\n",
+			tee_err(tee, "%s can't get pfn for %p\n",
 				__func__, buffer);
 			ret = -EINVAL;
 			goto out;
@@ -645,7 +594,7 @@ static int tee_shm_va_get(struct tee_context *ctx, struct tee_shm *shm,
 		shm->paddr = PFN_PHYS(pfn) + offset_total;
 
 		if (vma->vm_end - vma->vm_start - offset_total < size) {
-			dev_err(_DEV(tee), "%s %p:%x not big enough: %lx - %d < %x\n",
+			tee_err(tee, "%s %p:%x not big enough: %lx - %d < %x\n",
 					__func__, buffer, shm->paddr,
 					vma->vm_end - vma->vm_start,
 					offset_total, size);
@@ -668,7 +617,7 @@ static int tee_shm_va_get(struct tee_context *ctx, struct tee_shm *shm,
 
 		if (!phys_base) {
 			spin_unlock(&mm->page_table_lock);
-			dev_err(_DEV(tee), "%s can't get physical address for %p\n",
+			tee_err(tee, "%s can't get physical address for %p\n",
 					__func__, buffer);
 			goto err;
 		}
@@ -679,7 +628,7 @@ static int tee_shm_va_get(struct tee_context *ctx, struct tee_shm *shm,
 					virt_base + i*PAGE_SIZE);
 			if (pa != phys_base + i*PAGE_SIZE) {
 				spin_unlock(&mm->page_table_lock);
-				dev_err(_DEV(tee), "%s %p:%x not big enough: %lx - %d < %x\n",
+				tee_err(tee, "%s %p:%x not big enough: %lx - %d < %x\n",
 						__func__, buffer, phys_base,
 						i*PAGE_SIZE,
 						offset_total, size);
@@ -695,7 +644,7 @@ err:
 	}
 
 out:
-	dev_dbg(_DEV(tee), "%s: < %d shm=%p vaddr=%p paddr=%x\n",
+	tee_dbg(tee, "%s: < %d shm=%p vaddr=%p paddr=%x\n",
 			__func__, ret, (void *)shm, buffer, shm->paddr);
 	return ret;
 }
@@ -708,18 +657,18 @@ struct tee_shm *tee_shm_get(struct tee_context *ctx, TEEC_SharedMemory *c_shm,
 	struct tee *tee = ctx->tee;
 	int ret;
 
-	dev_dbg(_DEV(tee), "%s: > fd=%d flags=%08x\n",
+	tee_dbg(tee, "%s: > fd=%d flags=%08x\n",
 			__func__, c_shm->d.fd, c_shm->flags);
 
 	shm = kzalloc(sizeof(*shm), GFP_KERNEL);
 	if (IS_ERR_OR_NULL(shm)) {
-		dev_err(_DEV(tee), "can't alloc tee_shm\n");
+		tee_err(tee, "can't alloc tee_shm\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
 	shm->ctx = ctx;
 	shm->tee = tee;
-	shm->dev = _DEV(tee);
+	shm->dev = tee->dev;
 	shm->flags = c_shm->flags | TEE_SHM_MEMREF;
 	shm->size_req = size;
 	shm->size_alloc = 0;
@@ -728,20 +677,20 @@ struct tee_shm *tee_shm_get(struct tee_context *ctx, TEEC_SharedMemory *c_shm,
 		struct tee_shm *kc_shm = (struct tee_shm *)c_shm->d.ptr;
 
 		if (!kc_shm) {
-			dev_err(_DEV(tee), "kapi fd null\n");
+			tee_err(tee, "kapi fd null\n");
 			ret = -EINVAL;
 			goto err;
 		}
 		shm->paddr = kc_shm->paddr;
 
 		if (kc_shm->size_alloc < size + offset) {
-			dev_err(_DEV(tee), "kapi buff too small %zd < %zd + %d\n",
+			tee_err(tee, "kapi buff too small %zd < %zd + %d\n",
 				kc_shm->size_alloc, size, offset);
 			ret = -EINVAL;
 			goto err;
 		}
 
-		dev_dbg(_DEV(tee), "fd=%d @p=%p\n",
+		tee_dbg(tee, "fd=%d @p=%p\n",
 				c_shm->d.fd, (void *)shm->paddr);
 	} else if (c_shm->d.fd) {
 		ret = tee_shm_db_get(tee, shm,
@@ -749,7 +698,7 @@ struct tee_shm *tee_shm_get(struct tee_context *ctx, TEEC_SharedMemory *c_shm,
 		if (ret)
 			goto err;
 	} else if (!c_shm->buffer) {
-		dev_dbg(_DEV(tee), "null buffer, pass 'as is'\n");
+		tee_dbg(tee, "null buffer, pass 'as is'\n");
 	} else {
 #ifdef VA_GET_ENABLED
 		ret = tee_shm_va_get(ctx, shm,
@@ -762,12 +711,10 @@ struct tee_shm *tee_shm_get(struct tee_context *ctx, TEEC_SharedMemory *c_shm,
 #endif
 	}
 
-	OUTMSGX(shm);
 	return shm;
 
 err:
 	kfree(shm);
-	OUTMSGX(ERR_PTR(ret));
 	return ERR_PTR(ret);
 }
 
@@ -775,7 +722,7 @@ void tee_shm_put(struct tee_context *ctx, struct tee_shm *shm)
 {
 	struct tee *tee = ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > shm=%p flags=%08x paddr=%p\n",
+	tee_dbg(tee, "%s: > shm=%p flags=%08x paddr=%p\n",
 			__func__, (void *)shm, shm->flags, (void *)shm->paddr);
 
 	BUG_ON(!shm);
@@ -788,7 +735,7 @@ void tee_shm_put(struct tee_context *ctx, struct tee_shm *shm)
 		sdb = shm->sdb;
 		dma_buf = sdb->attach->dmabuf;
 
-		dev_dbg(_DEV(tee), "%s: db=%p\n", __func__, (void *)dma_buf);
+		tee_dbg(tee, "%s: db=%p\n", __func__, (void *)dma_buf);
 
 		dma_buf_unmap_attachment(sdb->attach, sdb->sgt, DMA_NONE);
 		dma_buf_detach(dma_buf, sdb->attach);
@@ -799,6 +746,5 @@ void tee_shm_put(struct tee_context *ctx, struct tee_shm *shm)
 	}
 
 	kfree(shm);
-	OUTMSG(0);
 }
 

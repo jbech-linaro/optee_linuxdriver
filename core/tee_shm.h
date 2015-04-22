@@ -14,10 +14,39 @@
 #define __TEE_SHM_H__
 
 #include <linux/tee_client_api.h>
+#include <linux/scatterlist.h>
 struct tee_context;
 struct tee_shm;
 struct tee_shm_io;
 struct tee;
+
+/**
+ * struct tee_shm - internal structure to store a shm object.
+ *
+ * @entry: list of tee_shm
+ * @ctx: tee_context attached to the buffer.
+ * @tee: tee attached to the buffer.
+ * @dev: device attached to the buffer.
+ * @size_req: requested size for the buffer
+ * @size_alloc: effective size of the buffer
+ * @kaddr: kernel address if mapped kernel side
+ * @paddr: physical address
+ * @flags: flags which denote the type of the buffer
+ * @parent: the parent of shm reference
+ */
+struct tee_shm {
+	struct list_head entry;
+	struct tee_context *ctx;
+	struct tee *tee;
+	struct device *dev;
+	size_t size_req;
+	size_t size_alloc;
+	uint32_t flags;
+	void *kaddr;
+	dma_addr_t paddr;
+	struct sg_table sgt;
+	struct tee_shm_dma_buf *sdb;
+};
 
 int tee_shm_alloc_io(struct tee_context *ctx, struct tee_shm_io *shm_io);
 void tee_shm_free_io(struct tee_shm *shm);

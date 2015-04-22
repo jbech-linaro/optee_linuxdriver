@@ -290,7 +290,7 @@ typedef struct {
 	size_t size;
 	uint32_t flags;
 	/*
-	 * identifier can store a handle (int) or a structure pointer (void *).
+	 * Identifier can store a handle (int) or a structure pointer (void *).
 	 * define this union to match case where sizeof(int)!=sizeof(void *).
 	 */
 	union {

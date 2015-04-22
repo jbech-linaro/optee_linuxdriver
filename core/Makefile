@@ -25,8 +25,4 @@ optee-objs:=   \
 		tee_shm.o  \
 		tee_supp_com.o  \
 		tee_sysfs.o \
-		tee_debugfs.o \
-		tee_kernel_api.o \
 		tee_mutex_wait.o
-
-

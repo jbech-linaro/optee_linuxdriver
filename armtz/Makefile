@@ -26,7 +26,7 @@ optee_armtz-objs:=   \
 
 
 ifeq ($(CONFIG_ARM),y)
-# "smc" assembly intruction requires dedicated "armv7 secure extension"
+# "smc" assembly instruction requires dedicated "ARMv7 secure extension"
 secext := $(call as-instr,.arch_extension sec,+sec)
 AFLAGS_tee_smc-arm.o := -Wa,-march=armv7-a$(secext)
 optee_armtz-objs += \

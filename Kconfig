@@ -13,8 +13,9 @@
 
 # Trursted Execution Environment Configuration
 config TEE_SUPPORT
-	bool "Trusted Execution Environment Support"
+	bool "OP-TEE driver support"
 	default y
 	---help---
-	  This implements the Trusted Execution Environment (TEE) Client
-	  API Specification from GlobalPlatform Device Technology.
+	  This option implements the kernel driver for OP-TEE. If you want to
+	  make OP-TEE working in your hardware, please say 'Yes' to configure.
+	  Choose 'M' to compile this driver as a module and say 'N' if unsure.

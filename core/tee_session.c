@@ -28,13 +28,6 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 				   struct tee_cmd *cmd);
 static void _release_tee_cmd(struct tee_session *sess, struct tee_cmd *cmd);
 
-#define _DEV_TEE _DEV(sess->ctx->tee)
-
-#define INMSG dev_dbg(_DEV_TEE, "%s: >\n", __func__)
-#define OUTMSG(val) dev_dbg(_DEV_TEE, "%s: < %d\n", __func__, (int)val)
-
-/******************************************************************************/
-
 static inline bool flag_set(int val, int flags)
 {
 	return (val & flags) == flags;
@@ -44,9 +37,6 @@ static inline bool is_mapped_temp(int flags)
 {
 	return flag_set(flags, TEE_SHM_MAPPED | TEE_SHM_TEMP);
 }
-
-
-/******************************************************************************/
 
 #define _UUID_STR_SIZE 35
 static char *_uuid_to_str(const TEEC_UUID *uuid)
@@ -121,7 +111,7 @@ static int tee_session_open_be(struct tee_session *sess,
 
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > open a new session", __func__);
+	tee_dbg(tee, "%s: > open a new session", __func__);
 
 	sess->sessid = 0;
 	ret = _init_tee_cmd(sess, cmd_io, &cmd);
@@ -129,7 +119,7 @@ static int tee_session_open_be(struct tee_session *sess,
 		goto out;
 
 	if (cmd.uuid) {
-		dev_dbg(_DEV(tee), "%s: UUID=%s\n", __func__,
+		tee_dbg(tee, "%s: UUID=%s\n", __func__,
 			_uuid_to_str((TEEC_UUID *) cmd.uuid->kaddr));
 	}
 
@@ -144,7 +134,7 @@ static int tee_session_open_be(struct tee_session *sess,
 
 out:
 	_release_tee_cmd(sess, &cmd);
-	dev_dbg(_DEV(tee), "%s: < ret=%d, sessid=%08x", __func__, ret,
+	tee_dbg(tee, "%s: < ret=%d, sessid=%08x", __func__, ret,
 		sess->sessid);
 	return ret;
 }
@@ -159,7 +149,7 @@ int tee_session_invoke_be(struct tee_session *sess, struct tee_cmd_io *cmd_io)
 
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sessid=%08x, cmd=0x%08x\n", __func__,
+	tee_dbg(tee, "%s: > sessid=%08x, cmd=0x%08x\n", __func__,
 		sess->sessid, cmd_io->cmd);
 
 	ret = _init_tee_cmd(sess, cmd_io, &cmd);
@@ -177,7 +167,7 @@ int tee_session_invoke_be(struct tee_session *sess, struct tee_cmd_io *cmd_io)
 
 out:
 	_release_tee_cmd(sess, &cmd);
-	dev_dbg(_DEV(tee), "%s: < ret=%d", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d", __func__, ret);
 	return ret;
 }
 
@@ -190,12 +180,12 @@ static int tee_session_close_be(struct tee_session *sess)
 
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sessid=%08x", __func__, sess->sessid);
+	tee_dbg(tee, "%s: > sessid=%08x", __func__, sess->sessid);
 
 	ret = tee->ops->close(sess);
 	sess->sessid = 0;
 
-	dev_dbg(_DEV(tee), "%s: < ret=%d", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d", __func__, ret);
 	return ret;
 }
 
@@ -210,7 +200,7 @@ static int tee_session_cancel_be(struct tee_session *sess,
 
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sessid=%08x, cmd=0x%08x\n", __func__,
+	tee_dbg(tee, "%s: > sessid=%08x, cmd=0x%08x\n", __func__,
 		sess->sessid, cmd_io->cmd);
 
 	ret = _init_tee_cmd(sess, cmd_io, &cmd);
@@ -221,7 +211,7 @@ static int tee_session_cancel_be(struct tee_session *sess,
 
 out:
 	_release_tee_cmd(sess, &cmd);
-	dev_dbg(_DEV(tee), "%s: < ret=%d", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d", __func__, ret);
 	return ret;
 }
 
@@ -238,19 +228,19 @@ static int tee_do_invoke_command(struct tee_session *sess,
 	ctx = sess->ctx;
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sessid=%08x\n", __func__, sess->sessid);
+	tee_dbg(tee, "%s: > sessid=%08x\n", __func__, sess->sessid);
 
 	BUG_ON(!sess->sessid);
 
 	if (tee_copy_from_user
 	    (ctx, &k_cmd, (void *)u_cmd, sizeof(struct tee_cmd_io))) {
-		dev_err(_DEV(tee), "%s: tee_copy_from_user failed\n", __func__);
+		tee_err(tee, "%s: tee_copy_from_user failed\n", __func__);
 		goto exit;
 	}
 
 	if ((k_cmd.op == NULL) || (k_cmd.uuid != NULL) ||
 	    (k_cmd.data != NULL) || (k_cmd.data_size != 0)) {
-		dev_err(_DEV(tee),
+		tee_err(tee,
 			"%s: op or/and data parameters are not valid\n",
 			__func__);
 		goto exit;
@@ -258,13 +248,13 @@ static int tee_do_invoke_command(struct tee_session *sess,
 
 	ret = tee_session_invoke_be(sess, &k_cmd);
 	if (ret)
-		dev_err(_DEV(tee), "%s: tee_invoke_command failed\n", __func__);
+		tee_err(tee, "%s: tee_invoke_command failed\n", __func__);
 
 	tee_put_user(ctx, k_cmd.err, &u_cmd->err);
 	tee_put_user(ctx, k_cmd.origin, &u_cmd->origin);
 
 exit:
-	dev_dbg(_DEV(tee), "%s: < ret=%d\n", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -281,20 +271,20 @@ static int tee_do_cancel_cmd(struct tee_session *sess,
 	ctx = sess->ctx;
 	tee = sess->ctx->tee;
 
-	dev_dbg(sess->ctx->tee->dev, "%s: > sessid=%08x\n", __func__,
+	tee_dbg(sess->ctx->tee, "%s: > sessid=%08x\n", __func__,
 		sess->sessid);
 
 	BUG_ON(!sess->sessid);
 
 	if (tee_copy_from_user
 	    (ctx, &k_cmd, (void *)u_cmd, sizeof(struct tee_cmd_io))) {
-		dev_err(_DEV(tee), "%s: tee_copy_from_user failed\n", __func__);
+		tee_err(tee, "%s: tee_copy_from_user failed\n", __func__);
 		goto exit;
 	}
 
 	if ((k_cmd.op == NULL) || (k_cmd.uuid != NULL) ||
 	    (k_cmd.data != NULL) || (k_cmd.data_size != 0)) {
-		dev_err(_DEV(tee),
+		tee_err(tee,
 			"%s: op or/and data parameters are not valid\n",
 			__func__);
 		goto exit;
@@ -302,13 +292,13 @@ static int tee_do_cancel_cmd(struct tee_session *sess,
 
 	ret = tee_session_cancel_be(sess, &k_cmd);
 	if (ret)
-		dev_err(_DEV(tee), "%s: tee_invoke_command failed\n", __func__);
+		tee_err(tee, "%s: tee_invoke_command failed\n", __func__);
 
 	tee_put_user(ctx, k_cmd.err, &u_cmd->err);
 	tee_put_user(ctx, k_cmd.origin, &u_cmd->origin);
 
 exit:
-	dev_dbg(_DEV(tee), "%s: < ret=%d", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d", __func__, ret);
 	return ret;
 }
 
@@ -323,7 +313,7 @@ static long tee_session_ioctl(struct file *filp, unsigned int cmd,
 
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > cmd nr=%d\n", __func__, _IOC_NR(cmd));
+	tee_dbg(tee, "%s: > cmd nr=%d\n", __func__, _IOC_NR(cmd));
 
 	switch (cmd) {
 	case TEE_INVOKE_COMMAND_IOC:
@@ -339,7 +329,7 @@ static long tee_session_ioctl(struct file *filp, unsigned int cmd,
 		break;
 	}
 
-	dev_dbg(_DEV(tee), "%s: < ret=%d\n", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d\n", __func__, ret);
 
 	return ret;
 }
@@ -375,7 +365,7 @@ int tee_session_close_and_destroy(struct tee_session *sess)
 	ctx = sess->ctx;
 	tee = ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sess=%p\n", __func__, sess);
+	tee_dbg(tee, "%s: > sess=%p\n", __func__, sess);
 
 	if (!tee_session_is_opened(sess))
 		return -EINVAL;
@@ -387,11 +377,11 @@ int tee_session_close_and_destroy(struct tee_session *sess)
 	list_del(&sess->entry);
 	mutex_unlock(&sess->ctx->tee->lock);
 
-	devm_kfree(_DEV(tee), sess);
+	devm_kfree(tee->dev, sess);
 	tee_context_put(ctx);
 	tee_put(tee);
 
-	dev_dbg(_DEV(tee), "%s: <\n", __func__);
+	tee_dbg(tee, "%s: <\n", __func__);
 	return ret;
 }
 
@@ -406,14 +396,14 @@ struct tee_session *tee_session_create_and_open(struct tee_context *ctx,
 
 	tee = ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: >\n", __func__);
+	tee_dbg(tee, "%s: >\n", __func__);
 	ret = tee_get(tee);
 	if (ret)
 		return ERR_PTR(-EBUSY);
 
-	sess = devm_kzalloc(_DEV(tee), sizeof(struct tee_session), GFP_KERNEL);
+	sess = devm_kzalloc(tee->dev, sizeof(struct tee_session), GFP_KERNEL);
 	if (!sess) {
-		dev_err(_DEV(tee), "%s: tee_session allocation() failed\n",
+		tee_err(tee, "%s: tee_session allocation() failed\n",
 			__func__);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -423,12 +413,12 @@ struct tee_session *tee_session_create_and_open(struct tee_context *ctx,
 
 	ret = tee_session_open_be(sess, cmd_io);
 	if (ret || !sess->sessid || cmd_io->err) {
-		dev_err(_DEV(tee), "%s: ERROR ret=%d (err=0x%08x, org=%d,  sessid=0x%08x)\n",
+		tee_err(tee, "%s: ERROR ret=%d (err=0x%08x, org=%d,  sessid=0x%08x)\n",
 				__func__, ret, cmd_io->err,
 				cmd_io->origin, sess->sessid);
 		tee_put(tee);
 		tee_context_put(ctx);
-		devm_kfree(_DEV(tee), sess);
+		devm_kfree(tee->dev, sess);
 		if (ret)
 			return ERR_PTR(ret);
 		else
@@ -440,7 +430,7 @@ struct tee_session *tee_session_create_and_open(struct tee_context *ctx,
 	list_add_tail(&sess->entry, &ctx->list_sess);
 	mutex_unlock(&tee->lock);
 
-	dev_dbg(_DEV(tee), "%s: < sess=%p\n", __func__, sess);
+	tee_dbg(tee, "%s: < sess=%p\n", __func__, sess);
 	return sess;
 }
 
@@ -452,12 +442,12 @@ int tee_session_create_fd(struct tee_context *ctx, struct tee_cmd_io *cmd_io)
 
 	BUG_ON(cmd_io->fd_sess > 0);
 
-	dev_dbg(_DEV(tee), "%s: >\n", __func__);
+	tee_dbg(tee, "%s: >\n", __func__);
 
 	sess = tee_session_create_and_open(ctx, cmd_io);
 	if (IS_ERR_OR_NULL(sess)) {
 		ret = PTR_ERR(sess);
-		dev_dbg(_DEV(tee), "%s: ERROR can't create the session (ret=%d, err=0x%08x, org=%d)\n",
+		tee_dbg(tee, "%s: ERROR can't create the session (ret=%d, err=0x%08x, org=%d)\n",
 			__func__, ret, cmd_io->err, cmd_io->origin);
 		cmd_io->fd_sess = -1;
 		goto out;
@@ -468,7 +458,7 @@ int tee_session_create_fd(struct tee_context *ctx, struct tee_cmd_io *cmd_io)
 	ret =
 	    anon_inode_getfd("tee_session", &tee_session_fops, sess, O_CLOEXEC);
 	if (ret < 0) {
-		dev_err(_DEV(tee), "%s: ERROR can't get a fd (ret=%d)\n",
+		tee_err(tee, "%s: ERROR can't get a fd (ret=%d)\n",
 			__func__, ret);
 		tee_session_close_and_destroy(sess);
 		goto out;
@@ -477,7 +467,7 @@ int tee_session_create_fd(struct tee_context *ctx, struct tee_cmd_io *cmd_io)
 	ret = 0;
 
 out:
-	dev_dbg(_DEV(tee), "%s: < ret=%d, sess=%p, fd=%d\n", __func__,
+	tee_dbg(tee, "%s: < ret=%d, sess=%p, fd=%d\n", __func__,
 		ret, sess, cmd_io->fd_sess);
 	return ret;
 }
@@ -498,7 +488,7 @@ static bool tee_session_is_supported_type(struct tee_session *sess, int type)
 	case TEEC_MEMREF_PARTIAL_INOUT:
 		return true;
 	default:
-		dev_err(_DEV_TEE, "type is invalid (type %02x)\n", type);
+		tee_err(sess->ctx->tee, "type is invalid (type %02x)\n", type);
 		return false;
 	}
 }
@@ -533,7 +523,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 	ctx = sess->ctx;
 	tee = sess->ctx->tee;
 
-	dev_dbg(_DEV(tee), "%s: > sessid=%08x\n", __func__, sess->sessid);
+	tee_dbg(tee, "%s: > sessid=%08x\n", __func__, sess->sessid);
 
 	memset(cmd, 0, sizeof(struct tee_cmd));
 
@@ -543,7 +533,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 	cmd_io->origin = cmd->origin;
 	cmd_io->err = cmd->err;
 
-	if (tee_context_copy_from_client(ctx, &op, cmd_io->op, sizeof(op)))
+	if (tee_context_copy(true, ctx, &op, cmd_io->op, sizeof(op)))
 		goto out;
 
 	cmd->param.type_original = op.paramTypes;
@@ -561,7 +551,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 		case TEEC_VALUE_OUTPUT:
 		case TEEC_VALUE_INOUT:
 			param->params[idx].value = op.params[idx].value;
-			dev_dbg(_DEV_TEE,
+			tee_dbg(tee,
 				"%s: param[%d]:type=%d,a=%08x,b=%08x (VALUE)\n",
 				__func__, idx, type, param->params[idx].value.a,
 				param->params[idx].value.b);
@@ -570,7 +560,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 		case TEEC_MEMREF_TEMP_INPUT:
 		case TEEC_MEMREF_TEMP_OUTPUT:
 		case TEEC_MEMREF_TEMP_INOUT:
-			dev_dbg(_DEV_TEE,
+			tee_dbg(tee,
 				"> param[%d]:type=%d,buffer=%p,s=%zu (TMPREF)\n",
 				idx, type, op.params[idx].tmpref.buffer,
 				op.params[idx].tmpref.size);
@@ -583,7 +573,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 			if (IS_ERR_OR_NULL(param->params[idx].shm))
 				goto out;
 
-			dev_dbg(_DEV_TEE, "< %d %p:%zd\n", idx,
+			tee_dbg(tee, "< %d %p:%zd\n", idx,
 					(void *)param->params[idx].shm->paddr,
 					param->params[idx].shm->size_alloc);
 			break;
@@ -605,14 +595,14 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 				offset = op.params[idx].memref.offset;
 				size = op.params[idx].memref.size;
 				if (param->c_shm[idx].size < size + offset) {
-					dev_err(_DEV(tee), "A PARTIAL parameter is bigger than the parent %zd < %d + %d\n",
+					tee_err(tee, "A PARTIAL parameter is bigger than the parent %zd < %d + %d\n",
 						param->c_shm[idx].size, size,
 						offset);
 					goto out;
 				}
 			}
 
-			dev_dbg(_DEV_TEE, "> param[%d]:type=%d,buffer=%p, offset=%d size=%d\n",
+			tee_dbg(tee, "> param[%d]:type=%d,buffer=%p, offset=%d size=%d\n",
 					idx, type, param->c_shm[idx].buffer,
 					offset, size);
 
@@ -632,7 +622,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 					goto out;
 			}
 
-			dev_dbg(_DEV_TEE, "< %d %p:%zd\n", idx,
+			tee_dbg(tee, "< %d %p:%zd\n", idx,
 				(void *)param->params[idx].shm->paddr,
 				param->params[idx].shm->size_req);
 			break;
@@ -645,7 +635,7 @@ static int _init_tee_cmd(struct tee_session *sess, struct tee_cmd_io *cmd_io,
 	}
 
 	if (cmd_io->uuid != NULL) {
-		dev_dbg(_DEV_TEE, "%s: copy UUID value...\n", __func__);
+		tee_dbg(tee, "%s: copy UUID value...\n", __func__);
 		cmd->uuid = tee_context_alloc_shm_tmp(sess->ctx,
 			sizeof(*cmd_io->uuid), cmd_io->uuid, TEEC_MEM_INPUT);
 		if (IS_ERR_OR_NULL(cmd->uuid)) {
@@ -660,7 +650,7 @@ out:
 	if (ret)
 		_release_tee_cmd(sess, cmd);
 
-	dev_dbg(_DEV_TEE, "%s: < ret=%d\n", __func__, ret);
+	tee_dbg(tee, "%s: < ret=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -678,8 +668,8 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 	BUG_ON(!sess->ctx);
 	ctx = sess->ctx;
 
-	dev_dbg(_DEV_TEE, "%s: returned err=0x%08x (origin=%d)\n", __func__,
-		cmd->err, cmd->origin);
+	tee_dbg(ctx->tee, "%s: returned err=0x%08x (origin=%d)\n",
+		__func__, cmd->err, cmd->origin);
 
 	cmd_io->origin = cmd->origin;
 	cmd_io->err = cmd->err;
@@ -695,7 +685,8 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 		size_t size_new;
 		TEEC_SharedMemory *parent;
 
-		dev_dbg(_DEV_TEE, "%s: id %d type %d\n", __func__, idx, type);
+		tee_dbg(ctx->tee, "%s: id %d type %d\n", __func__, idx,
+			type);
 		BUG_ON(!tee_session_is_supported_type(sess, type));
 		switch (type) {
 		case TEEC_NONE:
@@ -705,7 +696,7 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 			break;
 		case TEEC_VALUE_OUTPUT:
 		case TEEC_VALUE_INOUT:
-			dev_dbg(_DEV_TEE, "%s: a=%08x, b=%08x\n",
+			tee_dbg(ctx->tee, "%s: a=%08x, b=%08x\n",
 				__func__,
 				cmd->param.params[idx].value.a,
 				cmd->param.params[idx].value.b);
@@ -713,7 +704,7 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 			    (ctx, &cmd_io->op->params[idx].value,
 			     &cmd->param.params[idx].value,
 			     sizeof(cmd_io->op->params[idx].value)))
-				dev_err(_DEV_TEE,
+				tee_err(ctx->tee,
 					"%s:%d: can't update %d result to user\n",
 					__func__, __LINE__, idx);
 			break;
@@ -723,7 +714,7 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 			size_new = cmd->param.params[idx].shm->size_req;
 			if (size_new !=
 				cmd_io->op->params[idx].tmpref.size) {
-				dev_dbg(_DEV_TEE,
+				tee_dbg(ctx->tee,
 					"Size has been updated by the TA %zd != %zd\n",
 					size_new,
 					cmd_io->op->params[idx].tmpref.
@@ -732,12 +723,12 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 				     &cmd_io->op->params[idx].tmpref.size);
 			}
 
-			dev_dbg(_DEV_TEE, "%s: tmpref %p\n", __func__,
+			tee_dbg(ctx->tee, "%s: tmpref %p\n", __func__,
 				cmd->param.params[idx].shm->kaddr);
 
 			/* ensure we do not exceed the shared buffer length */
 			if (size_new > cmd_io->op->params[idx].tmpref.size)
-				dev_err(_DEV_TEE,
+				tee_err(ctx->tee,
 					"  *** Wrong returned size from %d:%zd > %zd\n",
 					idx, size_new,
 					cmd_io->op->params[idx].tmpref.
@@ -748,7 +739,7 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 				  cmd_io->op->params[idx].tmpref.buffer,
 				  cmd->param.params[idx].shm->kaddr,
 				  size_new))
-				dev_err(_DEV_TEE,
+				tee_err(ctx->tee,
 					"%s:%d: can't update %d result to user\n",
 					__func__, __LINE__, idx);
 			break;
@@ -781,7 +772,7 @@ static void _update_client_tee_cmd(struct tee_session *sess,
 					   parent->buffer + offset,
 					   cmd->param.params[idx].shm->kaddr,
 					   size_new))
-							dev_err(_DEV_TEE,
+							tee_err(ctx->tee,
 								"%s: can't update %d data to user\n",
 								__func__, idx);
 				}
@@ -806,7 +797,7 @@ static void _release_tee_cmd(struct tee_session *sess, struct tee_cmd *cmd)
 
 	ctx = sess->ctx;
 
-	dev_dbg(_DEV_TEE, "%s: > free the temporary objects...\n", __func__);
+	tee_dbg(ctx->tee, "%s: > free the temporary objects...\n", __func__);
 
 	tee_shm_free(cmd->uuid);
 
@@ -847,5 +838,5 @@ static void _release_tee_cmd(struct tee_session *sess, struct tee_cmd *cmd)
 
 out:
 	memset(cmd, 0, sizeof(struct tee_cmd));
-	dev_dbg(_DEV_TEE, "%s: <\n", __func__);
+	tee_dbg(ctx->tee, "%s: <\n", __func__);
 }
